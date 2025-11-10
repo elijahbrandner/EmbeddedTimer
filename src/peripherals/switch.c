@@ -1,80 +1,114 @@
-#include "../../includes/peripherals/switch.h"
 #include "../../includes/hal/hal-api.h"
-#include <stdio.h>
-
+#include "../../includes/peripherals/switch.h"
 #include "../../lib/address_map_arm.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+// --------------------------------------------------------------------
+// Internal helpers (simulation)
+// --------------------------------------------------------------------
+
+#if SIMULATION_MODE
+static uint32_t read_simulated_switches(void) {
+    // Ask once per call; accept 0..1023 (10 bits). Clamp to mask
+    unsigned int v = 0;
+    printf("[SWITCH] Simulation - enter 10-bit switch vlaue (0..1023): ");
+    if (scanf("%u", &v) != 1) {
+        // If bad input, default to 0=0 and clear stdin
+        int c; while ((c = getchar()) != '\n' && c != EOF) {}
+        v = 0;
+    } else {
+        int c; while ((c = getchar()) != '\n' && c != EOF) {}
+    }
+    return (uint32_t)(v & SWITCH_ALL_MASK);
+}
+#endif
+
+// --------------------------------------------------------------------
+// API
+// --------------------------------------------------------------------
 
 // Global HAL mapping - shared across switch operations
-static hal_map_t hal_map;
-static int hal_initialized = 0;
-
-int switch_init(switch_handle_t *sw) {
+int switch_init(switch_handle_t *sw, hal_map_t *hal) {
     if (!sw) return -1;
-    
-    // Initialize HAL if not already done
-    if (!hal_initialized) {
-        if (hal_open(&hal_map) != 0) {
-            fprintf(stderr, "Failed to initialize HAL for switches\n");
-            return -1;
-        }
-        hal_initialized = 1;
-    }
-    
-    // Get virtual address for switch register (offset from LW bridge base)
-    sw->reg_addr = hal_get_virtual_addr(&hal_map, SW_BASE);
-    if (!sw->reg_addr) {
-        fprintf(stderr, "Failed to get switch register address\n");
+    sw->hal = hal;
+#if SIMULATION_MODE
+    sw->reg = NULL;
+    sw->initialized = 1;
+    printf("[SWITCH] Simulation mode - initialized (no MMIO).\n");
+    return 0;
+#else
+    if (!hal) return -1;
+    sw->reg = (volatile uint32_t *) hal_get_virtual_addr(hal, SW_BASE);
+    if (!sw->reg) {
+        sw->initialized = 0;
         return -1;
     }
-    
     sw->initialized = 1;
-    
-    printf("Switch peripheral initialized successfully at virtual address %p\n", sw->reg_addr);
     return 0;
+#endif
 }
 
 int switch_cleanup(switch_handle_t *sw) {
     if (!sw || !sw->initialized) return -1;
-    
-    sw->reg_addr = NULL;
+    sw->reg = NULL;
     sw->initialized = 0;
-    
-    // Close HAL if this was the last switch user
-    if (hal_initialized) {
-        if (hal_close(&hal_map) != 0) {
-            fprintf(stderr, "Failed to cleanup HAL\n");
-            return -1;
-        }
-        hal_initialized = 0;
-    }
-    
-    printf("Switch peripheral cleaned up successfully\n");
+    sw->hal = NULL;
     return 0;
 }
 
-int switch_read_all(switch_handle_t *sw, uint32_t *switch_state) {
-    if (!sw || !sw->initialized || !sw->reg_addr || !switch_state) return -1;
-    
-    // Read from switch register
-    *switch_state = *(volatile uint32_t *)sw->reg_addr;
-    
-    // Mask to ensure only valid switch bits (10 switches)
-    *switch_state &= SWITCH_ALL_MASK;
-    
+int switch_read_all(const switch_handle_t *sw, uint32_t *state) {
+    if (!sw || !state || !sw->initialized) return -1;
+#if SIMULATION_MODE
+    *state = read_simulated_switches();
+    return 0;
+#else
+    *state = (*(sw->reg)) & SWITCH_ALL_MASK;
+    return 0;
+#endif
+}
+
+
+int switch_read(const switch_handle_t *sw, int switch_number, int *bit_state) {
+    if (!sw || !bit_state || !sw->initialized) return -1;
+    if (switch_number < 0 || switch_number > 9) return -1;
+
+    uint32_t all = 0;
+    if (switch_read_all(sw, &all) != 0) return -1;
+
+    *bit_state = (int)((all >> switch_number) & 0x1u);
     return 0;
 }
 
-int switch_read(switch_handle_t *sw, int switch_number, int *state) {
-    if (!sw || !sw->initialized || switch_number < 0 || switch_number >= SWITCH_COUNT || !state) {
-        return -1;
-    }
-    
-    // Get all switch states
-    uint32_t all_switches;
-    if (switch_read_all(sw, &all_switches) != 0) return -1;
-    
-    // Extract the specific switch state (1 if on, 0 if off)
-    *state = (all_switches >> switch_number) & 1;
-    
-    return 0;
+int switch_read_input_value(const switch_handle_t *sw) {
+    if (!sw || !sw->initialized) return 01;
+
+    uint32_t all = 0;
+    if (switch_read_all(sw, &all) != 0) return -1;
+
+    // SW[6:0] -> numeric input (0..127), then clamp 0..99)
+    int value = (int)(all & SWITCH_INPUT_MASK);
+    if (value > 99) value = 99;
+    return value;
+}
+
+int switch_read_mode(const switch_handle_t *sw) {
+    if (!sw || !sw->initialized) return -1;
+
+    uint32_t all = 0;
+    if (switch_read_all(sw, &all) != 0) return -1;
+
+    // SW9 -> mode (0 = countdown, 1 = stopwatch)
+    return ((all & SWITCH_MODE_MASK) ? SWITCH_MODE_STOPWATCH : SWITCH_MODE_COUNTDOWN);
+}
+
+int switch_read_bit(const switch_handle_t *sw, int bit_index) {
+    if (!sw || !sw->initialized) return -1;
+    if (bit_index < 0 || bit_index > 31) return -1;
+
+    uint32_t all = 0;
+    if (switch_read_all(sw, &all) != 0) return -1;
+
+    return (int)((all >> bit_index) & 0x1u);
 }

@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <unistd.h>
 #include "../../includes/hal/hal-api.h"
 #include "../../includes/peripherals/hex-display.h"
 #include "../../lib/address_map_arm.h"
@@ -26,78 +25,105 @@ static const uint8_t seg_table[16] = {
     0x79, // E
     0x71  // F
 };
+void seg_table();
 
 //?------------------------------------------------------------------------
-//?     GLOBALS
+//?     Initialization / Cleanup 
 //?------------------------------------------------------------------------
-static hal_map_t hex03_map;
-static hal_map_t hex45_map;
+int hex_display_init(hex_display_handle_t *hex, hal_map_t *hal) {
+    if (!hex) return -1;
+    hex->hal = hal;
 
-static volatile uint32_t *hex03_ptr = NULL;
-static volatile uint32_t *hex45_ptr = NULL;
+#if SIMULATION_MODE
+    hex->hex03_reg = NULL;
+    hex->hex45_reg = NULL;
+    hex->initialized = 1;
+    printf("[HEX] Simulation mode - initialized (no MMIO). \n");
+    return 0;
+#else
+    if (!hal) return -1;
+    hex->hex03_reg = (volatile uint32_t *)hal_get_virtual_addr(hal, HEX3_HEX0_BASE);
+    hex->hex45_reg = (volatile uint32_t *)hal_get_virtual_addr(hal, HEX5_HEX4_BASE);
 
-//?------------------------------------------------------------------------
-//?     INIT & CLOSE
-//?------------------------------------------------------------------------
-int init_hex0_hex3(void) {
-    if (hal_open(&hex03_map) != 0) {
+    if (!hex->hex03_reg || !hex->hex45_reg) {
+        hex->initialized = 0;
         return -1;
     }
-    hex03_ptr = (volatile uint32_t *)hal_get_virtual_addr(&hex03_map, HEX3_HEX0_BASE);
-    if (hex03_ptr == NULL) {
-        hal_close(&hex03_map);
-        return -1;
+    hex->initialized = 1;
+    return 0;
+#endif
+}
+
+int hex_display_cleanup(hex_display_handle_t *hex) {
+    if (!hex) return -1;
+    hex->hal = NULL;
+    hex->hex03_reg = NULL;
+    hex->hex45_reg = NULL;
+    hex->initialized = 0;
+}
+
+//?------------------------------------------------------------------------
+// Write / Clear
+//?------------------------------------------------------------------------
+
+int hex_display_write (const hex_display_handle_t *hex, int value) {
+    if (!hex || !hex->initialized) return -1;
+
+#if SIMULATION_MODE
+    printf("[HEX] Simulated display output: %06d\n", value);
+    return 0;
+#else
+    // Split the value into digits and update HEX0-HEX5
+    int digits[6];
+    for (int i = 0; i < 6; i++) {
+        digits[i] = value % 10;
+        value /= 10;
+    }
+
+    // Write to HEX0-HEX3
+    uint32_t word03 = 0;
+    for (int i = 0; i < 4; i++) {
+        word03 |= (seg_table[digits[i]] << (8 * i));
+    }
+    *(hex->hex45_reg) = word45;
+    return 0;
+#endif
+}
+
+int hex_display_clear_digit(const hex_display_handle_t *hex, int digit) {
+    if (!hex || !hex->initialized) return -1;
+
+#if SIMULATION_MODE
+    printf("[HEX] Clear digit %d (simulated) \n", digit);
+    return 0;
+#else
+    // Active-low, so 0xFF means "off"
+    if (digit < 0 || digit > 5) return -1;
+
+    if (digit <= 3) {
+        uint32_t word = *(hex->hex03_reg);
+        word &= ~(0xFF << (8 * digit));
+        word |= (0xFF << (8 * digit));
+        *(hex->hex03_reg) = word;
+    } else {
+        uint32_t word = *(hex->hex45_reg);
+        word &= ~(0xFF << (8 * (digit -4)));
+        word |= (0xFF << (8 * (digit -4)));
+        *(hex->hex45_reg) = word;
     }
     return 0;
+#endif
 }
 
-int init_hex4_hex5(void) {
-    if (hal_open(&hex45_map) != 0) {
-        return -1;
-    }
-    hex45_ptr = (volatile uint32_t *)hal_get_virtual_addr(&hex45_map, HEX5_HEX4_BASE);
-    if (hex45_ptr == NULL) {
-        hal_close(&hex45_map);
-        return -1;
-    }
+int hex_display_clear_all(const hex_display_handle_t *hex) {
+    if (!hex || !hex->initialized) return -1;
+
+#if SIMULATION_MODE
+    printf("[HEX] Clear all digits (simulated)\n");
     return 0;
-}
-
-int close_hex0_hex3(void) {
-    hex03_ptr = NULL;
-    return hal_close(&hex03_map);
-}
-
-int close_hex4_hex5(void) {
-    hex45_ptr = NULL;
-    return hal_close(&hex45_map);
-}
-
-//?------------------------------------------------------------------------
-//?     WRITE FUNCTIONS
-//?------------------------------------------------------------------------
-//* Write a digit (0–F) to a given HEX display
-int hex_display_write(int display, int value) {
-    if (value < 0 || value > 15) return -1;  // invalid digit
-    uint8_t seg_code = seg_table[value];
-
-    switch (display) {
-        case 0: *hex03_ptr = (*hex03_ptr & 0xFFFFFF00) | seg_code; break;
-        case 1: *hex03_ptr = (*hex03_ptr & 0xFFFF00FF) | (seg_code << 8); break;
-        case 2: *hex03_ptr = (*hex03_ptr & 0xFF00FFFF) | (seg_code << 16); break;
-        case 3: *hex03_ptr = (*hex03_ptr & 0x00FFFFFF) | (seg_code << 24); break;
-        case 4: *hex45_ptr = (*hex45_ptr & 0xFFFFFF00) | seg_code; break;
-        case 5: *hex45_ptr = (*hex45_ptr & 0xFFFF00FF) | (seg_code << 8); break;
-        default: return -1;
-    }
+#else  
+    *(hex->hex03_reg) = 0xFFFFFFFF;
+    *(hex->hex45_reg) = 0xFFFFFFFF;
     return 0;
-}
-
-int hex_display_clear(int display) {
-    return hex_display_write(display, 0x10); //* 0x10 = blank (not in seg_table)
-}
-
-void hex_display_clear_all(void) {
-    if (hex03_ptr) *hex03_ptr = 0;
-    if (hex45_ptr) *hex45_ptr = 0;
+#endif
 }

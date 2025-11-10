@@ -5,6 +5,11 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/select.h>
+#include "../includes/hal/hal-api.h"
+#include "../includes/peripherals/button.h"
+#include "../includes/peripherals/switch.h"
+#include "../includes/peripherals/hex-display.h"
+
 
 //? Application States
 typedef enum {
@@ -120,7 +125,38 @@ void get_time_input_confirmed(const char *label, int *value, int min, int max, a
     }
 }
 
+// HAL and Peripherals
+hal_map_t hal;
+button_handle_t btn;
+switch_handle_t sw;
+hex_display_handle_t hex;
+
 int main(void) {
+
+    if (hal_open(&hal) != 0) {
+        printf(" HAL Initialization failed.\n");
+        return -1;
+    }
+    button_init(&btn, &hal);
+    switch_init(&sw, &hal);
+    hex_display_init(&hex, &hal);
+
+    printf("[SYSTEM] Simulation mode active - peripherals initialized.\n\n");
+
+    #if SIMULATION_MODE
+    int fake_val = switch_read_input_value(&sw);
+    int mode = switch_read_mode(&sw);
+    printf("[TEST] Simulated Switch Input Value: %d | Mode: %s\n", 
+            fake_val, (mode == SWITCH_MODE_STOPWATCH) ? "STOPWATCH" : "COUNTDOWN");
+
+    int key = button_get_simulated_key();
+    printf("[TEST] Simulated Button Pressed KEY%d\n", key);
+
+    hex_display_write(&hex, 123456);
+    sleep(1);
+    hex_display_clear_all(&hex);
+    #endif
+
     app_state_t current_state = STATE_IDLE;
     int running = 1;
 
@@ -266,5 +302,9 @@ int main(void) {
     } 
     
     printf("\nExiting Simulation...\n");
+    button_cleanup(&btn);
+    switch_cleanup(&sw);
+    hex_display_cleanup(&hex);
+    hal_close(&hal);
     return 0;
 }

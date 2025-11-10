@@ -4,9 +4,9 @@ INCLUDES = -Iincludes -Ilib
 
 SOURCES = src/main.c \
           src/hal/hal-api.c \
-          src/peripherals/led.c \
 		  src/peripherals/hex-display.c \
-		  src/peripherals/switch.c
+		  src/peripherals/switch.c \
+		  src/peripherals/button.c 
 
 TARGET = M2_SIM
 
