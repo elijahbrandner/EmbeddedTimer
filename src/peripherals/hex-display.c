@@ -25,7 +25,6 @@ static const uint8_t seg_table[16] = {
     0x79, // E
     0x71  // F
 };
-void seg_table();
 
 //?------------------------------------------------------------------------
 //?     Initialization / Cleanup 
