@@ -13,21 +13,14 @@
 int hal_open(hal_map_t *map) {
     if (!map) return -1;
 
-
-#if SIMULATION_MODE
-    printf("[HAL] Simulation mode active - skipping /dev/mem mapping. \n");
-    map->fd = -1;
-    map->virtual_base = NULL;
-    map->span = 0;
-    return 0;
-
-#else 
+    // Open /dev/mem for raw access
     map->fd = open("/dev/mem", O_RDWR | O_SYNC);
     if (map->fd == -1) {
         perror("[HAL] ERROR: could not open /dev/mem");
         return -1;
     }
 
+    // Map the lightweight bridge
     map->virtual_base = mmap(
         NULL, 
         LW_BRIDGE_SPAN,
@@ -46,56 +39,45 @@ int hal_open(hal_map_t *map) {
     map->span = LW_BRIDGE_SPAN;
     printf("[HAL] Hardware mapping successful (base: 0x%X)\n", LW_BRIDGE_BASE);
     return 0;
-#endif
 }
 
 int hal_close(hal_map_t *map) {
     if (!map) return -1;
 
-#if SIMULATION_MODE
-    printf("[HAL] Simulation mode - no mmap to close.\n");
-    map->fd = -1;
-    map->virtual_base = NULL;
-    map->span = 0;
-    return 0;
-#else
-    if (munmap(map->virtual_base, map->span) != 0) {
-        perror("[HAL] ERROR: munmap() failed");
-        return -1;
+    if (map->virtual_base) {
+        munmap(map->virtual_base, map->span);
+        map->virtual_base = NULL;
     }
 
-    close(map->fd);
-    map->fd = -1;
-    map->virtual_base = NULL;
-    map->span = 0;
-    printf("[HAL] Hardware unmapped successfully. \n");
+    if (map->fd >= 0) {
+        close(map->fd);
+        map->fd = -1;
+    }
+
     return 0;
-#endif
 }
 
 void* hal_get_virtual_addr(hal_map_t *map, unsigned int offset) {
-#if SIMULATION_MODE
-    // Simulation: just return NULL to indicate there's no mapped memory
-    (void)map;
-    (void)offset;
-    return NULL;
-#else 
     if (!map || !map->virtual_base) return NULL;
-    return (void*)((uint8_t)map->virtual_base + offset);
-#endif
+    return (void*)((uint8_t *)map->virtual_base + offset);
 }
 
-// Optional stubs (for clarity and expansion)
-int hal_init(void) {
-#if SIMULATION_MODE
-    printf("[HAL] Simulation init stub executed. \n");
-#endif
-    return 0;
+// -----------------------------------------------------------------------------
+// 32-bit MMIO Write
+// -----------------------------------------------------------------------------
+void hal_write32(hal_map_t *map, unsigned int offset, uint32_t data) {
+    if (!map || !map->virtual_base) return;
+
+    uint32_t *addr = (uint32_t *)((uint8_t *)map->virtual_base + offset);
+    *addr = data;
 }
 
-int hal_cleanup(void) {
-#if SIMULATION_MODE
-    printf("[HAL] Simulation cleanup stub executed. \n");
-#endif
-    return 0;
+// -----------------------------------------------------------------------------
+// 32-bit MMIO Read
+// -----------------------------------------------------------------------------
+uint32_t hal_read32(hal_map_t *map, unsigned int offset) {
+    if (!map || !map->virtual_base) return 0;
+
+    uint32_t *addr = (uint32_t *)((uint8_t *)map->virtual_base + offset);
+    return *addr;
 }

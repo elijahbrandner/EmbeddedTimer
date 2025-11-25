@@ -2,7 +2,7 @@
 #define SWITCH_H
 
 #include <stdint.h>
-#include "../hal/hal-api.h" // for hal_map_t and SIMULATION_MODE flag
+#include "../hal/hal-api.h" // for hal_map_t
 
 // --------------------------------------------------------------------
 // DE10-Standard Switch Map

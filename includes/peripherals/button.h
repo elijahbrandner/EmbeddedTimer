@@ -2,7 +2,7 @@
 #define BUTTON_H
 
 #include <stdint.h>
-#include "../hal/hal-api.h"   // for hal_map_t and SIMULATION_MODE
+#include "../hal/hal-api.h"   // for hal_map_t
 
 // ------------------------------------------------------------
 // DE10-Standard Push Buttons (KEY[3:0])
@@ -48,9 +48,5 @@ int button_read_all(const button_handle_t *btn, uint32_t *state);
 
 // Read a specific button (0–3)
 int button_read(const button_handle_t *btn, int button_number, int *pressed);
-
-// Wait for a simulated key press (console input) in simulation mode
-// Returns pressed key ID (0–3) or -1 for invalid input
-int button_get_simulated_key(void);
 
 #endif // BUTTON_H

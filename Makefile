@@ -1,14 +1,15 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -O2
-INCLUDES = -Iincludes -Ilib
+CFLAGS = -Wall -Wextra -std=c99 -O2 -g
+INCLUDES = -Iincludes -Ilib -Isrc
 
 SOURCES = src/main.c \
           src/hal/hal-api.c \
 		  src/peripherals/hex-display.c \
 		  src/peripherals/switch.c \
-		  src/peripherals/button.c 
+		  src/peripherals/button.c \
+		  src/peripherals/soft_timer.c
 
-TARGET = M2_SIM
+TARGET = M4_Timer
 
 all: $(TARGET)
 

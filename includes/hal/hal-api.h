@@ -5,14 +5,6 @@
 #include <stdint.h> // for uint32_t
 
 // --------------------------------------------------------------
-// HAL CONFIGURATION
-// --------------------------------------------------------------
-// Toggle Simulation mode:
-// 1 = simulation (no /dev/mem, only console I/O)
-// 0 = real hardware (uses mmap via /dev/mem)
-#define SIMULATION_MODE 1
-
-// --------------------------------------------------------------
 // HAL STRUCTURE
 // --------------------------------------------------------------
 
@@ -36,10 +28,9 @@ int hal_close(hal_map_t *map);
 // Get virutual address of register at given offset
 void* hal_get_virtual_addr(hal_map_t *map, unsigned int offset);
 
-// Initialize all mapped peripherals (stub for now)
-int hal_init(void);
+// 32-bit MMIO read/write
+void     hal_write32(hal_map_t *map, unsigned int offset, uint32_t data);
+uint32_t hal_read32(hal_map_t *map, unsigned int offset);
 
-// Cleanup all mapped peripherals (sub for now)
-int hal_cleanup(void);
 
 #endif // HAL_API_H

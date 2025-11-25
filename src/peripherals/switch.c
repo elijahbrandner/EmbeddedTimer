@@ -6,26 +6,6 @@
 #include <stdint.h>
 
 // --------------------------------------------------------------------
-// Internal helpers (simulation)
-// --------------------------------------------------------------------
-
-#if SIMULATION_MODE
-static uint32_t read_simulated_switches(void) {
-    // Ask once per call; accept 0..1023 (10 bits). Clamp to mask
-    unsigned int v = 0;
-    printf("[SWITCH] Simulation - enter 10-bit switch vlaue (0..1023): ");
-    if (scanf("%u", &v) != 1) {
-        // If bad input, default to 0=0 and clear stdin
-        int c; while ((c = getchar()) != '\n' && c != EOF) {}
-        v = 0;
-    } else {
-        int c; while ((c = getchar()) != '\n' && c != EOF) {}
-    }
-    return (uint32_t)(v & SWITCH_ALL_MASK);
-}
-#endif
-
-// --------------------------------------------------------------------
 // API
 // --------------------------------------------------------------------
 
@@ -33,13 +13,8 @@ static uint32_t read_simulated_switches(void) {
 int switch_init(switch_handle_t *sw, hal_map_t *hal) {
     if (!sw) return -1;
     sw->hal = hal;
-#if SIMULATION_MODE
-    sw->reg = NULL;
-    sw->initialized = 1;
-    printf("[SWITCH] Simulation mode - initialized (no MMIO).\n");
-    return 0;
-#else
     if (!hal) return -1;
+
     sw->reg = (volatile uint32_t *) hal_get_virtual_addr(hal, SW_BASE);
     if (!sw->reg) {
         sw->initialized = 0;
@@ -47,7 +22,6 @@ int switch_init(switch_handle_t *sw, hal_map_t *hal) {
     }
     sw->initialized = 1;
     return 0;
-#endif
 }
 
 int switch_cleanup(switch_handle_t *sw) {
@@ -60,13 +34,8 @@ int switch_cleanup(switch_handle_t *sw) {
 
 int switch_read_all(const switch_handle_t *sw, uint32_t *state) {
     if (!sw || !state || !sw->initialized) return -1;
-#if SIMULATION_MODE
-    *state = read_simulated_switches();
-    return 0;
-#else
     *state = (*(sw->reg)) & SWITCH_ALL_MASK;
     return 0;
-#endif
 }
 
 
@@ -82,7 +51,7 @@ int switch_read(const switch_handle_t *sw, int switch_number, int *bit_state) {
 }
 
 int switch_read_input_value(const switch_handle_t *sw) {
-    if (!sw || !sw->initialized) return 01;
+    if (!sw || !sw->initialized) return -1;
 
     uint32_t all = 0;
     if (switch_read_all(sw, &all) != 0) return -1;
