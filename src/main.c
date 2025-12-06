@@ -6,6 +6,7 @@
 #include "../includes/peripherals/button.h"
 #include "../includes/peripherals/switch.h"
 #include "../includes/peripherals/hex-display.h"
+#include "../includes/peripherals/led.h"
 #include "../includes/peripherals/soft_timer.h"
 
 // -----------------------------------------------------------------------------
@@ -35,6 +36,8 @@ hal_map_t               hal;
 button_handle_t         btn;
 switch_handle_t         sw;
 hex_display_handle_t    hex;
+led_handle_t            led;
+
 
 // Software timer (pure C, no hardware)
 soft_timer_t            timer;
@@ -129,6 +132,15 @@ int main(void) {
         hal_close(&hal);
         return -1;
     }
+
+    if (led_init(&led, &hal) != 0) {
+    printf("[ERROR] LED init failed.\n");
+    switch_cleanup(&sw);
+    button_cleanup(&btn);
+    hal_close(&hal);
+    return -1;
+}
+
 
     // Now that HAL + peripherals are initialized, clear HEX cleanly
     hex_display_clear_all(&hex);
@@ -333,22 +345,52 @@ int main(void) {
 
         case STATE_COUNTDOWN_FINISHED: {
 
-            if (!countdown_finished_printed) {
-                printf("[COUNTDOWN] Finished.\n");
-                hex_display_write(&hex, 0);    // extra safety
-                countdown_finished_printed = 1;
-            }
+        static int blink_state = 0;
+        static int blink_counter = 0;
 
-            if (key0 || key1) {
-                printf("[COUNTDOWN] Reset.\n");
-                soft_timer_reset(&timer);
-                preset_hours = preset_minutes = preset_seconds = 0;
-                countdown_finished_printed = 0;
-                current_state = STATE_IDLE;
-            }
-
-            break;
+        if (!countdown_finished_printed) {
+            printf("[COUNTDOWN] Finished.\n");
+            countdown_finished_printed = 1;
         }
+
+        // Toggle LED + HEX every 250ms
+        if (blink_counter >= 250) {
+            blink_counter = 0;
+            blink_state = !blink_state;
+
+            if (blink_state) {
+                // Show ZERO cleanly
+                hex_display_write(&hex, 0);
+                led_write(&led, 0x3FF);   // all LEDs ON
+            } else {
+                hex_display_clear_all(&hex);  // all segments off
+                led_write(&led, 0x000);   // all LEDs OFF
+            }
+        }
+
+        // exit on KEY0 or KEY1
+        if (key0 || key1) {
+            printf("[COUNTDOWN] Reset.\n");
+
+            soft_timer_reset(&timer);
+            preset_hours = preset_minutes = preset_seconds = 0;
+            countdown_finished_printed = 0;
+
+            blink_state = 0;
+            blink_counter = 0;
+
+            led_clear(&led);
+            hex_display_clear_all(&hex);
+
+            current_state = STATE_IDLE;
+        }
+
+        usleep(10000);  // 10ms
+        blink_counter += 10;
+        break;
+    }
+
+
 
 
 
@@ -451,6 +493,9 @@ int main(void) {
     switch_cleanup(&sw);
     button_cleanup(&btn);
     hal_close(&hal);
+    led_clear(&led);
+    led_cleanup(&led);
+
 
     return 0;
 }

@@ -7,6 +7,7 @@ SOURCES = src/main.c \
 		  src/peripherals/hex-display.c \
 		  src/peripherals/switch.c \
 		  src/peripherals/button.c \
+		  src/peripherals/led.c \
 		  src/peripherals/soft_timer.c
 
 TARGET = M4_Timer
